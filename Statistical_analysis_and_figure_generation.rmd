@@ -1,0 +1,1373 @@
+---
+title: "Blueberry data analysis"
+author: "Ali"
+date: "2025-02-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 300,
+                      cache = FALSE)
+```
+
+**This code offers an analysis of the 2018 blueberry study lead by Marta & Heather. The results are meant to assist with completion of the paper led by Amanda Gregoris.** 
+
+**First, let's plot & analyze EFB incidence over time at each of the 4 "blueberry-only" yards (i.e. BC-1, BC-2, BC-3, and AB-2). As noted by Carolyn Taylor (UBC statistial consultant), each yard must be analyzed separately.** 
+
+**Note that the "WF" (for "wild forage") group has been renamed the "non-BB" (for "non-blueberry") group, since some other agricultural crops still occur within the foraging range. In addition, most of the figures in the final version of the manuscript have been composed from these raw versions, where manipulations may include stitching panels and/or updating axis labels or aesthetics.** 
+
+```{r}
+#Relevant libraries will be loaded at the start of each code chunk
+suppressMessages(suppressWarnings(library(readxl)))
+suppressMessages(suppressWarnings(library(plyr)))
+suppressMessages(suppressWarnings(library(ggplot2)))
+
+#Read in the EFB incidence data
+EFB.PP.dat <- read_excel("Data summary_updated.xlsx", sheet = "EFB data T1-T3")
+EFB.PP.dat$Colony <- as.character(EFB.PP.dat$Colony)
+unique(EFB.PP.dat$Site.ID)
+head(EFB.PP.dat)
+
+```
+
+```{r EFB-incidence-plot, fig.height = 2.5, fig.width = 6}
+
+#Convert binary response (EFB y/n) to percents
+EFB.inc.noNA <- EFB.PP.dat[EFB.PP.dat$EFB.incidence != "NA",]
+EFB.inc.noNA$EFB.incidence <- as.numeric(EFB.inc.noNA$EFB.incidence)
+EFB.inc.noNA$Time.point <- as.character(EFB.inc.noNA$Time.point)
+
+agg.EFB.inc <- ddply(EFB.inc.noNA, c("Site.ID", "Time.point"), summarise,
+                        EFB.percent = 100*sum(EFB.incidence)/length(EFB.incidence))
+
+agg.EFB.sample <- ddply(EFB.inc.noNA, c("Site.ID", "Time.point"), summarise,
+                        EFB.percent = 100*sum(EFB.incidence)/length(EFB.incidence),
+                        N = length(EFB.incidence))
+
+#Define levels for graphing
+agg.EFB.inc$Site.ID <- factor(agg.EFB.inc$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+                              
+ggplot(agg.EFB.inc, aes(x = Time.point, y = EFB.percent)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    scale_y_continuous(name = "EFB incidence (% symptomatic colonies)") +
+    scale_x_discrete(name = "Time point")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) +
+  facet_wrap(~Site.ID, ncol = 6)
+  
+```
+**Can we build a glm with time as a fixed effect, including all blueberry fields, with colony as a random effect nested within field?**
+
+```{r}
+suppressMessages(suppressWarnings(library(lme4)))
+BB.inc <- EFB.inc.noNA[EFB.inc.noNA$Forage == "BB",]
+BB.inc$Time.point <- as.numeric(BB.inc$Time.point)
+fit <- glmer(EFB.incidence ~ Time.point + (1|Site.ID/Colony), family = "binomial", data = BB.inc)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T) #good
+summary(fit)
+
+```
+**Yes, we can fit this model and there is a significant effect of time on EFB incidence. However, since we cannot analyze the wildflower yard data this way, we will stick with the McNemar-Bowker test as suggested by Carolyn Taylor.**
+
+**Conduct the McNemar-Bowker test (at each site separately)**
+
+```{r}
+MB.dat <- read_excel("Data summary_updated.xlsx", sheet = "EFB for MB test T1-T3")
+
+#WF AB-1 yard - TP1-TP2
+MB.WF1 <- MB.dat[MB.dat$Site.ID == "WF AB-1",]
+table(MB.WF1$EFB.TP1, MB.WF1$EFB.TP2)
+WF1.table1 <- as.table(rbind(c(43, 1), c(0,0))) #Need to encode manually when bottom row is made up of zeros
+dimnames(WF1.table1) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(WF1.table1)
+
+#WF AB-1 yard - TP2-TP3
+WF1.table2 <- table(MB.WF1$EFB.TP2, MB.WF1$EFB.TP3)
+WF1.table2
+mcnemar.test(WF1.table2)
+
+#WF AB-1 yard - TP1-TP3
+table(MB.WF1$EFB.TP1, MB.WF1$EFB.TP3)
+WF1.table3 <- as.table(rbind(c(29, 10), c(0,0)))
+dimnames(WF1.table3) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(WF1.table3)
+
+#----------------------
+
+#BB AB-1 yard - TP1-TP2
+MB.BB.AB1 <- MB.dat[MB.dat$Site.ID == "BB AB-1",]
+table(MB.BB.AB1$EFB.TP1, MB.BB.AB1$EFB.TP2)
+BB.AB1.table1 <- as.table(rbind(c(46,0), c(0,0)))
+dimnames(BB.AB1.table1) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(BB.AB1.table1)
+
+#BB AB-1 yard - TP2-TP3
+table(MB.BB.AB1$EFB.TP2, MB.BB.AB1$EFB.TP3)
+BB.AB1.table2 <- as.table(rbind(c(22,21), c(0,0)))
+dimnames(BB.AB1.table2) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(BB.AB1.table2)
+
+#BB AB-1 yard - TP1-TP3
+table(MB.BB.AB1$EFB.TP1, MB.BB.AB1$EFB.TP3)
+BB.AB1.table3 <- as.table(rbind(c(20,19), c(0,0)))
+dimnames(BB.AB1.table3) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(BB.AB1.table3)
+
+#----------------------
+
+#BB BC-1 yard - TP1-TP2
+MB.BB.BC1 <- MB.dat[MB.dat$Site.ID == "BC-1",]
+table(MB.BB.BC1$EFB.TP1, MB.BB.BC1$EFB.TP2)
+#NA
+
+#BB BC-1 yard - TP2-TP3
+table(MB.BB.BC1$EFB.TP2, MB.BB.BC1$EFB.TP3)
+BB.BC1.table2 <- as.table(rbind(c(23,3), c(0,0)))
+dimnames(BB.BC1.table2) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(BB.BC1.table2)
+
+#BB BC-1 yard - TP1-TP3
+table(MB.BB.BC1$EFB.TP1, MB.BB.BC1$EFB.TP3)
+BB.BC1.table3 <- as.table(rbind(c(23,3), c(0,0)))
+dimnames(BB.BC1.table3) <- list(TP1 = c("No", "Yes"), TP2 = c("No", "Yes")) 
+mcnemar.test(BB.BC1.table3)
+
+#----------------------
+
+#BB BC-2 yard - TP1-TP2
+MB.BB.BC2 <- MB.dat[MB.dat$Site.ID == "BC-2",]
+BB.BC2.table1 <- table(MB.BB.BC2$EFB.TP1, MB.BB.BC2$EFB.TP2)
+BB.BC2.table1
+mcnemar.test(BB.BC2.table1)
+
+#BB BC-1 yard - TP2-TP3
+BB.BC2.table2<- table(MB.BB.BC2$EFB.TP2, MB.BB.BC2$EFB.TP3)
+BB.BC2.table2
+mcnemar.test(BB.BC2.table2)
+
+#BB BC-1 yard - TP1-TP3
+BB.BC2.table3<- table(MB.BB.BC2$EFB.TP1, MB.BB.BC2$EFB.TP3)
+BB.BC2.table3
+mcnemar.test(BB.BC2.table3)
+
+#----------------------
+
+#BB BC-3 yard - TP1-TP2
+MB.BB.BC3 <- MB.dat[MB.dat$Site.ID == "BC-3",]
+BB.BC3.table1 <- table(MB.BB.BC3$EFB.TP1, MB.BB.BC3$EFB.TP2)
+BB.BC3.table1
+mcnemar.test(BB.BC3.table1)
+
+#BB BC-1 yard - TP2-TP3
+BB.BC3.table2 <- table(MB.BB.BC3$EFB.TP2, MB.BB.BC3$EFB.TP3)
+BB.BC3.table2
+mcnemar.test(BB.BC3.table2)
+
+#BB BC-1 yard - TP1-TP3
+BB.BC3.table3 <- table(MB.BB.BC3$EFB.TP1, MB.BB.BC3$EFB.TP3)
+BB.BC3.table3
+mcnemar.test(BB.BC3.table3)
+
+#----------------------
+
+#BB AB-2 yard - TP1-TP2
+MB.BB.AB2 <- MB.dat[MB.dat$Site.ID == "AB-2",]
+BB.AB2.table1 <- table(MB.BB.AB2$EFB.TP1, MB.BB.AB2$EFB.TP2)
+BB.AB2.table1
+mcnemar.test(BB.AB2.table1)
+
+#BB AB-2 yard - TP2-TP3
+BB.AB2.table2 <- table(MB.BB.AB2$EFB.TP2, MB.BB.AB2$EFB.TP3)
+BB.AB2.table2
+mcnemar.test(BB.AB2.table2)
+
+#BB AB-2 yard - TP1-TP3
+BB.AB2.table3 <- table(MB.BB.AB2$EFB.TP1, MB.BB.AB2$EFB.TP3)
+BB.AB2.table3
+mcnemar.test(BB.AB2.table3)
+
+```
+
+**Great. Now let's move on to comparing sites at time point 3, first plotting the data. Note that the EFB intensity data should exclude colonies without EFB symptoms, as the high frequency of zeroes will not be suitable for some of the downstream analyses.**
+
+
+```{r EFB-incidence-tp3-Aggassiz, fig.height = 2.25, fig.width = 1.2}
+#First plot the TP3 WF vs. BB data, including disease intensity
+TP3.WF.BB <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site == "Aggassiz",]
+TP3.WF.BB$EFB.score <- as.numeric(TP3.WF.BB$EFB.score)
+
+#Summarize the data
+agg.TP3.WF.BB <- ddply(TP3.WF.BB, c("Site.ID"), summarise,
+                       EFB.percent = 100*sum(EFB.incidence)/length(EFB.incidence))
+agg.TP3.WF.BB$Site.ID <- c("BB", "WF")
+agg.TP3.WF.BB$Site.ID <-  factor(agg.TP3.WF.BB$Site.ID, levels = c("WF", "BB"))
+
+ggplot(agg.TP3.WF.BB, aes(x = Site.ID, y = EFB.percent)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    scale_y_continuous(name = "EFB incidence (% symptomatic colonies)", limits = c(0,60)) +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())
+
+```
+
+
+```{r EFB-intensity-tp3-Aggassiz, fig.height = 2.25, fig.width = 1.2}
+TP3.WF.BB.inten <- TP3.WF.BB[TP3.WF.BB$EFB.incidence == "1",]
+agg.TP3.WF.BB.inten <- ddply(TP3.WF.BB.inten, c("Site.ID"), summarise,
+                       EFB.intensity = mean(EFB.score),
+                       sd = sd(EFB.score),
+                       N = length(EFB.score))
+
+agg.TP3.WF.BB.inten$Site.ID <- c("BB", "WF")
+agg.TP3.WF.BB.inten$Site.ID <-  factor(agg.TP3.WF.BB.inten$Site.ID, levels = c("WF", "BB"))
+
+ggplot(agg.TP3.WF.BB.inten, aes(x = Site.ID, y = EFB.intensity)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=EFB.intensity, ymax=EFB.intensity+sd), width=.2)+
+    scale_y_continuous(name = "EFB intensity (average frame score)", limits = c(0,2)) +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())
+```
+**Now do the same for the other sites**
+
+```{r EFB-incidence-tp3-other, fig.height = 2.25, fig.width = 1.8}
+#First plot the TP3 WF vs. BB data, including disease intensity
+TP3.other <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site != "Aggassiz",]
+TP3.other$EFB.score <- as.numeric(TP3.other$EFB.score)
+
+#Summarize the data
+agg.TP3.other <- ddply(TP3.other, c("Site.ID"), summarise,
+                       EFB.percent = 100*sum(EFB.incidence)/length(EFB.incidence))
+
+agg.TP3.other$Site.ID <-  factor(agg.TP3.other$Site.ID, levels = c("BC-1", "BC-2", "BC-3", "AB-2"))
+
+ggplot(agg.TP3.other, aes(x = Site.ID, y = EFB.percent)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    scale_y_continuous(name = "EFB incidence (% symptomatic colonies)", limits = c(0,60)) +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())
+
+```
+```{r EFB-intensity-tp3-other, fig.height = 2.25, fig.width = 1.8}
+TP3.other.inten <- TP3.other[TP3.other$EFB.incidence == "1",]
+agg.TP3.other.inten <- ddply(TP3.other.inten, c("Site.ID"), summarise,
+                       EFB.intensity = mean(EFB.score),
+                       sd = sd(EFB.score),
+                       N = length(EFB.score))
+
+agg.TP3.other.inten$Site.ID <-  factor(agg.TP3.other.inten$Site.ID, levels = c("BC-1", "BC-2", "BC-3", "AB-2"))
+
+
+ggplot(agg.TP3.other.inten, aes(x = Site.ID, y = EFB.intensity)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=EFB.intensity, ymax=EFB.intensity+sd), width=.2)+
+    scale_y_continuous(name = "EFB intensity (average frame score)", limits = c(0,2)) +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())
+
+
+```
+
+
+
+**Now let's conduct the statistics, starting with Fisher Exact test on TP3 incidence data**
+
+```{r}
+suppressMessages(suppressWarnings(library(tibble)))
+
+#Make contingency table for WF vs BB
+agg.TP3.WF.BB <- ddply(TP3.WF.BB, c("Site.ID"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.TP3.WF.BB #take a look
+agg.TP3.WF.BB <- column_to_rownames(agg.TP3.WF.BB, var = "Site.ID") #Format rownames
+
+fisher.test(agg.TP3.WF.BB)
+
+
+#Make contingency table for others
+agg.TP3.other <- ddply(TP3.other, c("Site.ID"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.TP3.other #take a look
+agg.TP3.other <- column_to_rownames(agg.TP3.other, var = "Site.ID") #Format rownames
+
+fisher.test(agg.TP3.other)
+
+#conduct posthoc testing on each pairwise comparison
+Fisher.AB2.BC1 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("AB-2", "BC-1"),]
+fisher.test(Fisher.AB2.BC1)
+
+Fisher.AB2.BC2 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("AB-2", "BC-2"),]
+fisher.test(Fisher.AB2.BC2)
+
+Fisher.AB2.BC3 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("AB-2", "BC-3"),]
+fisher.test(Fisher.AB2.BC3)
+
+Fisher.BC1.BC2 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("BC-1", "BC-2"),]
+fisher.test(Fisher.BC1.BC2)
+
+Fisher.BC1.BC3 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("BC-1", "BC-3"),]
+fisher.test(Fisher.BC1.BC3)
+
+Fisher.BC2.BC3 <- agg.TP3.other[rownames(agg.TP3.other) %in% c("BC-2", "BC-3"),]
+fisher.test(Fisher.BC2.BC3)
+```
+
+**Only one of the above comparisons was significant after Bonferroni correction (BC-1 & BC-2). Now let's conduct statistics on EFB intensity data**
+
+```{r}
+library(dunn.test)
+kruskal.test(EFB.score ~ Forage, data = TP3.WF.BB.inten) 
+
+kruskal.test(EFB.score ~ Site.ID, data = TP3.other.inten)
+dunn.test(TP3.other.inten$EFB.score, TP3.other.inten$Site.ID, method = "Bonferroni")
+
+```
+
+**Moving on to visualize population sizes**
+
+```{r adult.frames, fig.height = 2.5, fig.width = 4.5}
+pop.dat <- read_excel("Data summary_updated.xlsx", sheet = "Population data T1-T2")
+pop.dat.noNA <- pop.dat[pop.dat$Adult != "NA",]
+pop.dat.noNA$Adult <- as.numeric(pop.dat.noNA$Adult)
+pop.dat.noNA$Brood <- as.numeric(pop.dat.noNA$Brood)
+pop.dat.noNA$Colony <- as.character(pop.dat.noNA$Colony)
+
+pop.dat.noNA$Adult.frames <- pop.dat.noNA$Adult/2
+pop.dat.noNA$Brood.frames <- pop.dat.noNA$Brood/2
+
+agg.pop.dat <- ddply(pop.dat.noNA, c("Site.ID", "Time.point"), summarise,
+                        adult.mean = mean(Adult.frames),
+                        adult.sd = sd(Adult.frames),
+                        brood.mean = mean(Brood.frames),
+                        brood.sd = sd(Brood.frames))
+
+
+agg.pop.dat$Site.ID <- factor(agg.pop.dat$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+agg.pop.dat$Time.point <- as.character(agg.pop.dat$Time.point)
+
+ggplot(agg.pop.dat, aes(x = Time.point, y = adult.mean)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=adult.mean, ymax=adult.mean+adult.sd), width=.2)+
+    scale_y_continuous(name = "Frames of adult bees") +
+    scale_x_discrete(name = "Time point")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) +
+  facet_wrap(~Site.ID, ncol = 6)
+```
+
+
+```{r brood.frames, fig.height = 2.5, fig.width = 4.5}
+ggplot(agg.pop.dat, aes(x = Time.point, y = brood.mean)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=brood.mean, ymax=brood.mean+brood.sd), width=.2)+
+    scale_y_continuous(name = "Frames of brood", limits = c(0,10)) +
+    scale_x_discrete(name = "Time point")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) +
+  facet_wrap(~Site.ID, ncol = 6)
+
+```
+
+
+**Now let's conduct the statistics. Try using a linear mixed model on each site separately. Test adult frames first.**
+
+```{r}
+suppressMessages(suppressWarnings(library(car)))
+suppressMessages(suppressWarnings(library(DHARMa)))
+suppressMessages(suppressWarnings(library(lmerTest)))
+
+pop.dat.WF <- pop.dat.noNA[pop.dat.noNA$Site.ID == "WF AB-1",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.WF)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+
+pop.dat.BB <- pop.dat.noNA[pop.dat.noNA$Site.ID == "BB AB-1",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.BB)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+
+pop.dat.BC1 <- pop.dat.noNA[pop.dat.noNA$Site.ID == "BC-1",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.BC1)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+
+pop.dat.BC2 <- pop.dat.noNA[pop.dat.noNA$Site.ID == "BC-2",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.BC2)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+
+pop.dat.BC3 <- pop.dat.noNA[pop.dat.noNA$Site.ID == "BC-3",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.BC3)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+
+pop.dat.AB2 <- pop.dat.noNA[pop.dat.noNA$Site.ID == "AB-2",]
+fit <- lmer(Adult.frames ~ Time.point + (1|Colony), data = pop.dat.AB2)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T)
+summary(fit)
+```
+What happens when we include varroa as a predictor?
+
+```{r}
+varroa.dat <- read_excel("Data summary_updated.xlsx", sheet = "Varroa data")
+varroa.dat$combo <- paste(varroa.dat$Colony, varroa.dat$Time.point, sep = ".")
+
+pop.dat.noNA$combo <- paste(pop.dat.noNA$Colony, pop.dat.noNA$Time.point, sep = ".")
+pop.combo <-pop.dat.noNA[pop.dat.noNA$combo %in% varroa.dat$combo,]
+varroa.dat <- varroa.dat[varroa.dat$combo %in% pop.combo$combo,]
+varroa.dat <- varroa.dat[order(varroa.dat$combo),]
+pop.combo <- pop.combo[order(pop.combo$combo),]
+varroa.dat$combo == pop.combo$combo
+pop.combo$varroa <- varroa.dat$Mite.percent
+
+pop.combo$EFB <- factor(pop.combo$EFB, levels = c("0", "1"))
+fit <- lmer(Brood.frames ~ Time.point + varroa + EFB+ (1|Site.ID/Colony), data = pop.combo)
+summary(fit)
+```
+
+What about using ddPCR instead of EFB?
+
+```{r}
+ddPCR <- read_excel("Data summary_updated.xlsx", sheet = "ddPCR")
+ddPCR$combo <- paste(ddPCR$Colony, ddPCR$Time.point, sep = ".")
+ddPCR.slim <- ddPCR[ddPCR$combo %in% pop.combo$combo,]
+ddPCR.slim <- ddPCR.slim[order(ddPCR.slim$combo),]
+ddPCR.slim$combo == pop.combo$combo
+pop.combo$ddPCR <- ddPCR.slim$EFB.ddPCR
+
+pop.combo.slim <- pop.combo[!is.na(pop.combo$ddPCR),]
+fit <- lmer(Brood.frames ~ Time.point + varroa + ddPCR + (1|Site.ID/Colony), data = pop.combo)
+summary(fit)
+
+```
+
+**Now test brood frames**
+
+```{r}
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.WF)
+summary(fit)
+
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.BB)
+summary(fit)
+
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.BC1)
+summary(fit)
+
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.BC2)
+summary(fit)
+
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.BC3)
+summary(fit)
+
+fit <- lmer(Brood.frames ~ Time.point + (1|Colony), data = pop.dat.AB2)
+summary(fit)
+
+```
+**Statistics on effect of patties**
+
+
+```{r}
+TP2 <- pop.dat[pop.dat$Time.point == "2" & pop.dat$Adult != "NA" & pop.dat$PP != "NA",]
+TP2$Adult <- as.numeric(TP2$Adult)
+
+fit <- lm(Adult ~ PP*Site.ID, data = TP2)
+summary(fit)
+Anova(fit)
+
+fit <- lm(Brood ~ PP*Site.ID, data = TP2)
+summary(fit)
+Anova(fit)
+```
+**Let's move on to analyzing the effect of pollen patties (using Fisher exact test on each field separately). First we will plot the data.**
+
+```{r EFB-incidence-pp, fig.height = 2.5, fig.width = 4.5}
+PP.inc <- EFB.inc.noNA[EFB.inc.noNA$PP != "NA" & EFB.inc.noNA$Time.point == "3",]
+agg.PP <- ddply(PP.inc, c("Site.ID","PP"), summarise,
+                        EFB.percent = 100*sum(EFB.incidence)/length(EFB.incidence))
+
+agg.PP$Site.ID <- factor(agg.PP$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+              
+cols <- c("#fff7bc", "#fe9929")
+  
+ggplot(agg.PP, aes(x = Site.ID, y = EFB.percent, fill = PP)) +
+    geom_bar(stat = "identity", color = "black", position = position_dodge()) +
+    scale_y_continuous(name = "EFB incidence (symptomatic colony %)") +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    scale_fill_manual(values = cols)+
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+```
+
+
+```{r EFB-intensity-pp, fig.height = 2.5, fig.width = 4.5}
+PP.score <- EFB.inc.noNA[EFB.inc.noNA$PP != "NA" & EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$EFB.score != "NA" & EFB.inc.noNA$EFB.incidence == "1",]
+
+PP.score$EFB.score <- as.numeric(PP.score$EFB.score)
+agg.PP <- ddply(PP.score, c("Site.ID","PP"), summarise,
+                        Average.score = mean(EFB.score),
+                        sd = sd(EFB.score),
+                        N = length(EFB.score))
+
+agg.PP$Site.ID <- factor(agg.PP$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+              
+cols <- c("#fff7bc", "#fe9929")
+  
+ggplot(agg.PP, aes(x = Site.ID, y = Average.score, fill = PP)) +
+    geom_bar(stat = "identity", position = position_dodge(), color = "black" ) +
+    geom_errorbar(aes(ymin=Average.score, ymax=Average.score+sd),width = 0.2, position = position_dodge(width = 0.9))+
+    scale_y_continuous(name = "EFB intensity (average frame score)") +
+    scale_x_discrete(name = "Yard")+
+    theme_bw() +
+    scale_fill_manual(values = cols)+
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+```
+
+**First conduct PP statistics on the Aggassiz yards (WF & BB) for EFB incidence**
+
+```{r}
+WF <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "WF AB-1"& EFB.inc.noNA$PP != "NA",]
+agg.WF <- ddply(WF, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.WF #take a look
+agg.WF <- column_to_rownames(agg.WF, var = "PP") #Format rownames
+
+fisher.test(agg.WF)
+
+BB <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "BB AB-1"& EFB.inc.noNA$PP != "NA",]
+agg.BB <- ddply(BB, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.BB #take a look
+agg.BB <- column_to_rownames(agg.BB, var = "PP") #Format rownames
+
+fisher.test(agg.BB)
+```
+
+**No significant differences with PP application here. Let's test the other sites**
+
+```{r}
+BC1 <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "BC-1"& EFB.inc.noNA$PP != "NA",]
+agg.BC1 <- ddply(BC1, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.BC1 #take a look
+agg.BC1 <- column_to_rownames(agg.BC1, var = "PP") #Format rownames
+
+fisher.test(agg.BC1) #No sig
+
+BC2 <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "BC-2"& EFB.inc.noNA$PP != "NA",]
+agg.BC2 <- ddply(BC2, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.BC2 #take a look
+agg.BC2 <- column_to_rownames(agg.BC2, var = "PP") #Format rownames
+
+fisher.test(agg.BC2) #no sig
+
+BC3 <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "BC-3"& EFB.inc.noNA$PP != "NA",]
+agg.BC3 <- ddply(BC3, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.BC3 #take a look
+agg.BC3 <- column_to_rownames(agg.BC3, var = "PP") #Format rownames
+
+fisher.test(agg.BC3)
+
+AB2 <- EFB.inc.noNA[EFB.inc.noNA$Time.point == "3" & EFB.inc.noNA$Site.ID == "AB-2"& EFB.inc.noNA$PP != "NA",]
+agg.AB2 <- ddply(AB2, c("PP"), summarise,
+                        EFB.yes = sum(EFB.incidence),
+                        EFB.no = length(EFB.incidence)-sum(EFB.incidence))
+agg.AB2 #take a look
+agg.AB2 <- column_to_rownames(agg.AB2, var = "PP") #Format rownames
+
+fisher.test(agg.AB2)
+```
+
+
+**Was there any effect of PP on EFB intensity?**
+
+```{r}
+WF.inten <- WF[WF$EFB.incidence == "1",]
+WF.inten$EFB.score <- as.numeric(WF.inten$EFB.score)
+t.test(EFB.score ~ PP, data = WF.inten, var.equal = TRUE)
+
+BB.inten <- BB[BB$EFB.incidence == "1",]
+BB.inten$EFB.score <- as.numeric(BB.inten$EFB.score)
+t.test(EFB.score ~ PP, data = BB.inten, var.equal = TRUE)
+
+BC1.inten <- BC1[BC1$EFB.incidence == "1",]
+BC1.inten$EFB.score <- as.numeric(BC1.inten$EFB.score)
+#t.test(EFB.score ~ PP, data = BC1.inten) #too few obs.
+
+BC2.inten <- BC2[BC2$EFB.incidence == "1",]
+BC2.inten$EFB.score <- as.numeric(BC2.inten$EFB.score)
+t.test(EFB.score ~ PP, data = BC2.inten, var.equal = TRUE)
+
+BC3.inten <- BC3[BC3$EFB.incidence == "1",]
+BC3.inten$EFB.score <- as.numeric(BC3.inten$EFB.score)
+t.test(EFB.score ~ PP, data = BC3.inten, var.equal = TRUE)
+
+AB2.inten <- AB2[AB2$EFB.incidence == "1",]
+AB2.inten$EFB.score <- as.numeric(AB2.inten$EFB.score)
+t.test(EFB.score ~ PP, data = AB2.inten, var.equal = TRUE)
+```
+
+
+test all sites together for maximum power
+```{r}
+tp3 <- EFB.inc.noNA[EFB.inc.noNA$Time.point == 3,]
+tp3 <- tp3[tp3$PP != "NA",]
+fit <- glmer(EFB.incidence ~ PP + (1|Site.ID), data = tp3, family = "binomial")
+summary(fit)
+
+tp3$EFB.score <- as.numeric(tp3$EFB.score)
+tp3.pos <- tp3[tp3$EFB.score >0,]
+hist(tp3.pos$EFB.score, breaks = 10)
+
+tp3.pos$score.log <- log(tp3.pos$EFB.score)
+hist(tp3.pos$score.log, breaks = 10)
+
+
+fit <- lmer(EFB.score ~ PP + (1|Site.ID), data = tp3.pos)
+summary(fit)
+```
+
+
+**Now, let's visualize the total patty consumption data**
+
+```{r EFB.incidence.consumption, fig.height = 2.5, fig.width = 3.5}
+Con.dat <- read_excel("Data summary_updated.xlsx", sheet = "PP data T3")
+Con.dat$EFB.incidence[Con.dat$EFB.incidence =="Y"] <- 1 #Replace "Y" with "1" to fit logistic 
+Con.dat$EFB.incidence[Con.dat$EFB.incidence =="N"] <- 0 #Replace "N" with "0" to fit logistic 
+Con.dat$EFB.incidence <- as.numeric(Con.dat$EFB.incidence)
+Con.dat$Site.ID <- factor(Con.dat$Site.ID, levels = c("WF AB-1", "BB AB-1", "AB-2", "BC-1", "BC-2", "BC-3"))
+
+ggplot(Con.dat, aes(x = Total.PP.consumed, y = EFB.incidence, color = Site.ID)) +
+  geom_point( size = 1, alpha = 0.5)+
+  geom_smooth(method = "glm", se = F,  size = 1, method.args = list(family = 'binomial'))+
+  scale_y_continuous(name = "EFB incidence (1 = symptomatic)") +
+  scale_x_continuous(name = "Total patty consumed (%)")+
+  theme_bw() +
+  scale_color_brewer(palette = "Dark2")+
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size = 8),
+        strip.background = element_blank(),
+        legend.key.size = unit(.3, 'cm'),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 6),
+        axis.line = element_line(size=0.5, colour = "black"))
+```
+
+```{r EFB.severity.consummption, fig.height = 2.5, fig.width = 3.5}
+Con.dat.inten <- Con.dat[Con.dat$EFB.incidence == "1",]
+ggplot(Con.dat.inten, aes(x = Total.PP.consumed, y = EFB.intensity, color = Site.ID)) +
+  geom_point( size = 1, alpha = 0.5)+
+  geom_smooth(method = "lm", se = F,  size = 1)+
+  scale_y_continuous(name = "EFB intensity (average frame score)") +
+  scale_x_continuous(name = "Total patty consumed (%)")+
+  theme_bw() +
+  scale_color_brewer(palette = "Dark2")+
+  theme(legend.text = element_text(size=8),
+        legend.title = element_text(size = 8),
+        strip.background = element_blank(),
+        legend.key.size = unit(.3, 'cm'),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 6),
+        axis.line = element_line(size=0.5, colour = "black"))
+
+```
+
+**It doesn't look like there will be any significant relationships once yard/beekeeper are accounted for. But let's test it anyway**
+
+```{r}
+library(emmeans)
+fit <- glm(EFB.incidence ~ Site.ID*Total.PP.consumed, data = Con.dat, family = "binomial")
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T) #Good
+summary(fit) #None significant
+Anova(fit)
+marginal = emmeans(fit, ~ Site.ID:Total.PP.consumed)
+pairs(marginal)
+
+fit <- lm(EFB.intensity ~ Site.ID*Total.PP.consumed, data = Con.dat.inten)
+#simulationOutput <- simulateResiduals(fittedModel = fit, plot = T) #Good
+summary(fit) #None significant
+Anova(fit)
+```
+**Did symptomatic colonies eat more patty?**
+
+```{r}
+hist(Con.dat$Total.PP.consumed, breaks = 50) #Very skewed, cannot use t-test
+
+Con.dat$EFB.incidence <- as.character(Con.dat$EFB.incidence)
+wilcox.test(Total.PP.consumed ~ EFB.incidence, data = Con.dat) #not significant
+
+```
+
+
+**Plotting the varroa data to have as a supplemental figure seems pertinent. Let's do that here, along with some statistics.**
+
+```{r varroa-AB1, fig.height = 2.5, fig.width = 2}
+var <- read_excel("Data summary_updated.xlsx", sheet = "Varroa data")
+agg.var <- ddply(var, c("Time.point", "Site.ID"), summarise,
+                        var.mean = mean(Mite.percent),
+                        var.sd = sd(Mite.percent),
+                        N = length(Mite.percent))
+agg.var$Site.ID <- factor(agg.var$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+agg.var$Time.point <- as.character(agg.var$Time.point)
+
+agg.var.AB1 <- agg.var[agg.var$Site.ID == "WF AB-1" | agg.var$Site.ID == "BB AB-1",]
+agg.var.AB1$Site.ID <- c("BB", "WF", "BB", "WF")
+agg.var.AB1$Site.ID <- factor(agg.var.AB1$Site.ID, levels = c("WF", "BB"))
+ggplot(agg.var.AB1, aes(x = Site.ID, y = var.mean)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=var.mean, ymax=var.mean+var.sd), width=.2)+
+    scale_y_continuous(name = "Mite infestation (%)" , limits = c(0,15)) +
+    scale_x_discrete(name = "Beekeeper")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())+
+  facet_wrap(~Time.point)
+```
+
+```{r var.other, fig.height = 2.5, fig.width = 3.4}
+
+agg.var.other <- agg.var[agg.var$Site.ID != "WF AB-1" & agg.var$Site.ID != "BB AB-1",]
+
+ggplot(agg.var.other, aes(x = Site.ID, y = var.mean)) +
+    geom_bar(stat = "identity", fill = "navy") +
+    geom_errorbar(aes(ymin=var.mean, ymax=var.mean+var.sd), width=.2)+
+    scale_y_continuous(name = "Mite infestation (%)" , limits = c(0,15)) +
+    scale_x_discrete(name = "Beekeeper")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank())+
+  facet_wrap(~Time.point)
+
+```
+**Now let's do some statistics on each time point separately. I will use the Mann-Whitney U test and Bonferroni correction because comparing medians is most appropriate for varroa data, which contains lots of zeroes.**
+
+```{r}
+AB1.TP1 <- var[var$Site == "Aggassiz" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Forage, data = AB1.TP1, exact = FALSE)
+
+AB1.TP2 <- var[var$Site == "Aggassiz" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Forage, data = AB1.TP2, exact = FALSE)
+
+BC1.BC2.TP1 <- var[var$Site.ID == "BC-1" | var$Site.ID == "BC-2" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.BC2.TP1, exact = FALSE)
+
+BC1.BC2.TP2 <- var[var$Site.ID == "BC-1" | var$Site.ID == "BC-2" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.BC2.TP2, exact = FALSE)
+
+BC1.BC3.TP1 <- var[var$Site.ID == "BC-1" | var$Site.ID == "BC-3" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.BC3.TP1, exact = FALSE)
+
+BC1.BC3.TP2 <- var[var$Site.ID == "BC-1" | var$Site.ID == "BC-3" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.BC3.TP2, exact = FALSE)
+
+BC1.AB2.TP1 <- var[var$Site.ID == "BC-1" | var$Site.ID == "AB-2" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.AB2.TP1, exact = FALSE)
+
+BC1.AB2.TP2 <- var[var$Site.ID == "BC-1" | var$Site.ID == "AB-2" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC1.AB2.TP2, exact = FALSE)
+
+BC2.BC3.TP1 <- var[var$Site.ID == "BC-2" | var$Site.ID == "BC-3" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC2.BC3.TP1, exact = FALSE)
+
+BC2.BC3.TP2 <- var[var$Site.ID == "BC-2" | var$Site.ID == "BC-3" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC2.BC3.TP2, exact = FALSE)
+
+BC2.AB2.TP1 <- var[var$Site.ID == "BC-2" | var$Site.ID == "AB-2" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC2.AB2.TP1, exact = FALSE)
+
+BC2.AB2.TP2 <- var[var$Site.ID == "BC-2" | var$Site.ID == "AB-2" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC2.AB2.TP2, exact = FALSE)
+
+BC3.AB2.TP1 <- var[var$Site.ID == "BC-3" | var$Site.ID == "AB-2" & var$Time.point == "1",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC3.AB2.TP1, exact = FALSE)
+
+BC3.AB2.TP2 <- var[var$Site.ID == "BC-3" | var$Site.ID == "AB-2" & var$Time.point == "2",]
+wilcox.test(Mite.percent ~ Site.ID, data = BC3.AB2.TP2, exact = FALSE)
+
+```
+
+**Finally, let's make a new map that doesn't infringe on copyright**
+
+```{r}
+suppressMessages(suppressWarnings(library(mapview)))
+
+loc <- read_excel("Data summary_updated.xlsx", sheet = "Yard locations")
+loc.pol <- loc[loc$Time.point == "pol",]
+loc.pol$Site <- factor(loc.pol$Site, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+loc.pol <- data.frame(loc.pol)
+a<- mapview(loc.pol, xcol = "Long", ycol = "Lat", zcol = "Site", crs = 4269, grid = FALSE, cex = 9, col.regions = c("#00806cfc","#003a9bff", "#0058bcff","#006be3ff", "#004da3ff", "navy" ), alpha.regions = .8, layer.name = "Site")
+
+mapshot(a, url = paste0(getwd(), "/bb-loc.html"),
+        file = paste0(getwd(), "/bb-loc.png"))
+
+loc.pp <- loc[loc$Time.point == "post.pol",]
+loc.pp <- data.frame(loc.pp)
+b<- mapview(loc.pp, xcol = "Long", ycol = "Lat", zcol = "Site", crs = 4269, grid = FALSE, cex = 9, col.regions = c( "#004da3ff", "navy" ), alpha.regions = .8, layer.name = "Site")
+
+mapshot(b, url = paste0(getwd(), "/pp-loc.html"),
+        file = paste0(getwd(), "/pp-loc.png"))
+
+```
+
+**Now let's analyze the ddPCR data for EFB abundance in adult bees sampled from the colonies.**
+
+
+```{r efb-ratio-by-incidence, fig.height = 2, fig.width = 2.5}
+#Read in ddPCR data
+pcr <- read_excel("Data summary_updated.xlsx", sheet = "EFB data T1-T3")
+pcr$field.incidence <- as.character(pcr$EFB.incidence)
+
+pcr <- pcr[!is.na(pcr$EFB.incidence),]
+pcr$field.incidence[pcr$field.incidence == "0"] <- "Asymptomatic"
+pcr$field.incidence[pcr$field.incidence == "1"] <- "Symptomatic"
+pcr$pcr.detect <- pcr$EFB.ddPCR
+pcr$pcr.detect[pcr$pcr.detect > 0] <- 1
+pcr$pcr.detect[pcr$pcr.detect == 0] <- 0
+
+pcr$log.PCR <- log2(pcr$EFB.ddPCR)
+agg <- ddply(pcr, c("field.incidence", "Time.point"), summarise,
+                       EFB.pcr = mean(EFB.ddPCR, na.rm = TRUE),
+                        EFB.log = mean(log.PCR, na.rm=TRUE),
+                        EFB.sd = sd(EFB.ddPCR, na.rm = TRUE),
+                        EFB.log.sd = sd(log.PCR, na.rm=TRUE),
+                        count = length(EFB.ddPCR))
+sum(agg$count)
+
+agg$Time.point <- factor(agg$Time.point, levels = c("1","2","3"))
+pcr <- data.frame(pcr)
+ggplot(agg, aes(x = Time.point, y = EFB.pcr)) +
+    geom_bar(stat = "identity", position = position_dodge(), color = "black", fill = c("navy","navy","navy","navy","navy","navy") ) +
+    geom_errorbar(aes(ymin=EFB.pcr, ymax=EFB.pcr+EFB.sd),width = 0.2, position = position_dodge(width = 0.9))+
+   geom_jitter(data = pcr, aes(x=Time.point, y = EFB.ddPCR),
+             width = 0.1, 
+             size = .5, alpha = .5)+
+    scale_y_continuous(name = "EFB ddPCR ratio") +
+    scale_x_discrete(name = "Time point")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) +
+  facet_wrap(~field.incidence)
+
+```
+
+
+```{r field-vs-pcr-detect, fig.height = 2, fig.width = 2}
+ggplot(pcr, aes(x = EFB.incidence, y = pcr.detect)) +
+   geom_smooth(method = "glm",method.args = list(family = "binomial"), se = TRUE)+
+    scale_y_continuous(name = "PCR positive", limits = c(0,1)) +
+    scale_x_continuous(name = "Field symptoms", limits = c(0,1))+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+```
+
+
+```{r}
+hist(pcr$EFB.ddPCR, breaks = 20)
+hist(pcr$log.PCR, breaks = 20)
+
+#zero inflated, model zeroes separately
+
+```
+
+```{r}
+library(lme4)
+library(DHARMa)
+library(lmerTest)
+pcr$Colony <- as.character(pcr$Colony)
+
+#model whether field symptoms predict pcr outcome
+fit <- glmer(pcr.detect ~ EFB.incidence +(1|Site/Colony), family = "binomial", data = pcr)
+summary(fit)
+ 
+
+
+```
+
+```{r efb.correlation, fig.height = 2, fig.width = 2}
+tp3 <- pcr[pcr$Time.point == "3",]
+tp3.nonzero <- tp3[tp3$pcr.detect == 1,]
+tp3.nonzero$scaled.pcr <- scale(tp3.nonzero$log.PCR)
+tp3.nonzero$scaled.field <- scale(tp3.nonzero$EFB.score)
+ggplot(tp3.nonzero, aes(x = scaled.field, y = scaled.pcr)) +
+   geom_smooth(method = "lm")+
+  geom_point(size = 1)+
+    scale_y_continuous(name = "Scaled log10(EFB ddPCR ratio)") +
+    scale_x_continuous(name = "Scaled EFB field intensity")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+
+
+
+```
+
+```{r}
+
+fit <- lmer(log.PCR ~ EFB.score +(1|Site), data = tp3.nonzero)
+summary(fit)
+
+
+#check if tp2 pcr predicts tp3 intensity better
+tp2 <- pcr[pcr$Time.point == "2",]
+tp2.nonzero <- tp2[tp2$pcr.detect == 1,]
+tp2.nonzero <- tp2.nonzero[!is.na(tp2.nonzero$log.PCR),]
+tp2.nonzero$scaled.pcr <- scale(tp2.nonzero$log.PCR)
+tp2.nonzero$scaled.field <- scale(tp2.nonzero$EFB.score)
+
+tp3.efb <- pcr[pcr$Time.point == "3",]
+tp3.efb <- tp3.efb[,c(4,8)]
+merged_tp <- merge(tp2.nonzero, tp3.efb, by = "Colony")
+
+fit <- lmer(EFB.score.y ~ log.PCR +(1|Site), data = merged_tp)
+summary(fit)
+
+```
+
+```{r efb-tp2-correlation, fig.height = 2, fig.width = 2}
+merged_tp$scaled.field.y <- scale(merged_tp$EFB.score.y)
+merged_tp$scaled.pcr.x <- scale(merged_tp$log.PCR)
+
+ggplot(merged_tp, aes(x = scaled.field.y, y = scaled.pcr.x)) +
+   geom_smooth(method = "lm")+
+  geom_point(size = 1)+
+    scale_y_continuous(name = "Scaled log10(EFB ddPCR ratio)") +
+    scale_x_continuous(name = "Scaled EFB field intensity")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+
+```
+
+
+```{r pcr-by-site, fig.height = 2.5, fig.width = 6}
+agg <- ddply(pcr, c("Site.ID", "Time.point"), summarise,
+                       EFB.pcr = 100*(sum(pcr.detect, na.rm = TRUE)/length(pcr.detect)),
+                        count = length(EFB.ddPCR))
+
+agg$Time.point <- factor(agg$Time.point, levels = c("1","2","3"))
+agg$Site.ID <- factor(agg$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+agg <- agg[order(agg$Site.ID),]
+ggplot(agg, aes(x = Time.point, y = EFB.pcr)) +
+    geom_bar(stat = "identity", position = position_dodge(), color = "black", fill = c("navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy","navy") ) +
+    scale_y_continuous(name = "EFB ddPCR ratio", limits = c(0,100)) +
+    scale_x_discrete(name = "Time point")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) +
+  facet_wrap(~Site.ID, ncol = 6)
+```
+
+```{r}
+library(emmeans)
+pcr <- pcr[!is.na(pcr$pcr.detect),]
+pcr$Time.point <- as.character(pcr$Time.point)
+wf <- pcr[pcr$Site.ID == "nonBB AB-1",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = wf, family = "binomial")
+summary(fit)
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+
+bb <- pcr[pcr$Site.ID == "BB AB-1",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = bb, family = "binomial")
+summary(fit)
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+
+bc1 <- pcr[pcr$Site.ID == "BC-1",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = bc1, family = "binomial")
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+summary(fit)
+
+bc2 <- pcr[pcr$Site.ID == "BC-2",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = bc2, family = "binomial")
+summary(fit)
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+
+bc3 <- pcr[pcr$Site.ID == "BC-3",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = bc3, family = "binomial")
+summary(fit)
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+
+ab2 <- pcr[pcr$Site.ID == "AB-2",]
+fit <- glmer(pcr.detect ~ Time.point + (1|Colony), data = ab2, family = "binomial")
+summary(fit)
+marginal = emmeans(fit, ~ Time.point)
+pairs(marginal)
+
+ab1 <- pcr[pcr$Site.ID == "nonBB AB-1" | pcr$Site.ID == "BB AB-1",]
+tp3.ab1 <- ab1[ab1$Time.point == 3,]
+agg.ab1 <- ddply(tp3.ab1, c("Site.ID"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.ab1 <- column_to_rownames(agg.ab1, var = "Site.ID") #take a look
+fisher.test(agg.ab1)
+
+other <- pcr[pcr$Site.ID != "nonBB AB-1" & pcr$Site.ID != "BB AB-1" & pcr$Time.point == 3 & !is.na(pcr$pcr.detect),]
+
+agg.other <- ddply(other, c("Site.ID"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.other <- column_to_rownames(agg.other, var = "Site.ID")
+fisher.test(agg.other)
+
+
+```
+
+```{r AB1-tp3-pcrpercent, fig.height = 2.25, fig.width = 2.5}
+agg.tp3 <- agg[agg$Time.point == "3",]
+ggplot(agg.tp3, aes(x = Site.ID, y = EFB.pcr)) +
+    geom_bar(stat = "identity", position = position_dodge(), color = "black", fill = c("navy","navy","navy","navy","navy","navy") ) +
+    scale_y_continuous(name = "M. plutonius incidence\n(% PCR detections)", limits = c(0,100)) +
+    scale_x_discrete(name = "Beekeeper")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+
+```
+
+```{r}
+library(emmeans)
+library(car)
+tp3.nonzero <- pcr[pcr$log.PCR != -Inf & pcr$Time.point == 3,]
+tp3.nonzero.ab1 <- tp3.nonzero[tp3.nonzero$Site.ID == "WF AB-1" | tp3.nonzero$Site.ID == "BB AB-1",]
+
+fit <- lm(log.PCR ~ Site.ID, data = tp3.nonzero.ab1)
+
+summary(fit)
+
+tp3.nonzero.other <- tp3.nonzero[tp3.nonzero$Site.ID != "WF AB-1" & tp3.nonzero$Site.ID != "BB AB-1",]
+fit <- lm(log.PCR ~ Site.ID, data = tp3.nonzero.other)
+
+
+summary(fit)
+
+Anova(fit)
+marginal = emmeans(fit, ~ Site.ID)
+pairs(marginal)
+```
+
+
+
+```{r AB1-tp3-pcr-intensity, fig.height = 2.25, fig.width = 2.5}
+tp3.nonzero$log.PCR.scaled <- scale(tp3.nonzero$log.PCR)
+
+agg.tp3.nonzero <- ddply(tp3.nonzero, c("Site.ID"), summarise,
+                        PCR.mean = mean(log.PCR),
+                        PCR.sd = sd(log.PCR))
+tp3.nonzero$Site.ID <- factor(tp3.nonzero$Site.ID, levels = c("WF AB-1", "BB AB-1", "BC-1", "BC-2", "BC-3", "AB-2"))
+tp3.nonzero <- tp3.nonzero[order(tp3.nonzero$Site.ID),]
+ggplot(tp3.nonzero, aes(x = Site.ID, y = log.PCR.scaled)) +
+    geom_boxplot(fill = "navy", outlier.shape = NA)+
+    scale_y_continuous(name = "Scaled log10(PCR ratio)") +
+    scale_x_discrete(name = "Beekeeper")+
+    theme_bw() +
+    theme(legend.key.size = unit(.3, 'cm'),
+          panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank(),
+        axis.title.y = element_text(size = 8),
+        axis.title.x = element_text(size = 8),
+        axis.text.y = element_text(colour="black", size = 8),
+        axis.text.x = element_text(colour="black", size = 8),
+        axis.line = element_line(colour = "black"),
+         plot.background = element_blank()) +
+  theme(strip.background = element_blank()) 
+
+```
+
+
+```{r}
+tp3.ab1.PP.WF <- tp3[tp3$PP != "NA" & tp3$Site.ID == "nonBB AB-1",]
+fit <- glm(pcr.detect ~ PP, data = tp3.ab1.PP.WF, family = "binomial")
+summary(fit)
+agg.ab1.nBB <- ddply(tp3.ab1.PP.WF, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.ab1.nBB <- column_to_rownames(agg.ab1.nBB, var = "PP")
+fisher.test(agg.ab1.nBB)
+
+tp3.ab1.PP.BB <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BB AB-1",]
+fit <- glm(pcr.detect ~ PP, data = tp3.ab1.PP.BB, family = "binomial")
+summary(fit)
+agg.ab1.BB <- ddply(tp3.ab1.PP.BB, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.ab1.BB <- column_to_rownames(agg.ab1.BB, var = "PP")
+fisher.test(agg.ab1.BB)
+
+tp3.bc1.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-1" & !(is.na(tp3$pcr.detect)),]
+fit <- glm(pcr.detect ~ PP, data = tp3.bc1.PP, family = "binomial")
+summary(fit)
+agg.tp3.bc1.PP <- ddply(tp3.bc1.PP, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.tp3.bc1.PP <- column_to_rownames(agg.tp3.bc1.PP, var = "PP")
+fisher.test(agg.tp3.bc1.PP)
+
+
+tp3.bc2.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-2" & !(is.na(tp3$pcr.detect)),]
+fit <- glm(pcr.detect ~ PP, data = tp3.bc2.PP, family = "binomial")
+summary(fit)
+agg.tp3.bc2.PP <- ddply(tp3.bc2.PP, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.tp3.bc1.PP <- column_to_rownames(agg.tp3.bc1.PP, var = "PP")
+fisher.test(agg.tp3.bc1.PP)
+
+tp3.bc3.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-3" & !is.na(tp3$pcr.detect),]
+fit <- glm(pcr.detect ~ PP, data = tp3.bc3.PP, family = "binomial")
+summary(fit)
+agg.tp3.bc3.PP <- ddply(tp3.bc3.PP, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.tp3.bc3.PP <- column_to_rownames(agg.tp3.bc3.PP, var = "PP")
+fisher.test(agg.tp3.bc3.PP)
+
+tp3.ab2.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "AB-2" & !is.na(tp3$pcr.detect),]
+fit <- glm(pcr.detect ~ PP, data = tp3.ab2.PP, family = "binomial")
+summary(fit)
+agg.tp3.ab2.PP <- ddply(tp3.ab2.PP, c("PP"), summarise,
+                        PCR.yes = sum(pcr.detect),
+                        PCR.no = length(pcr.detect)-sum(pcr.detect))
+agg.tp3.ab2.PP <- column_to_rownames(agg.tp3.ab2.PP, var = "PP")
+fisher.test(agg.tp3.ab2.PP)
+
+```
+
+
+```{r}
+tp3 <- tp3[tp3$log.PCR != -Inf,]
+tp3.ab1.PP.WF <- tp3[tp3$PP != "NA" & tp3$Site.ID == "nonBB AB-1",]
+fit <- lm(log.PCR ~ PP, data = tp3.ab1.PP.WF)
+summary(fit)
+
+tp3.ab1.PP.BB <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BB AB-1",]
+fit <- lm(log.PCR ~ PP, data = tp3.ab1.PP.BB)
+summary(fit)
+
+tp3.bc1.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-1",]
+fit <- lm(log.PCR ~ PP, data = tp3.bc1.PP)
+summary(fit)
+
+tp3.bc2.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-2",]
+fit <- lm(log.PCR ~ PP, data = tp3.bc2.PP)
+summary(fit)
+
+tp3.bc3.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "BC-3",]
+fit <- lm(log.PCR ~ PP, data = tp3.bc3.PP)
+summary(fit)
+
+tp3.ab2.PP <- tp3[tp3$PP != "NA" & tp3$Site.ID == "AB-2",]
+fit <- lm(log.PCR ~ PP, data = tp3.ab2.PP)
+summary(fit)
+
+```
