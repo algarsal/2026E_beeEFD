@@ -1,0 +1,103 @@
+---
+title: "Group Project"
+author:
+  - name: "Hari Valentino"
+  - name: "Le Thu Thao"
+  - name: "Naima Kaloun"
+  - name: "Manshi Negi"
+format:
+  html:
+    embed-resources: true
+---
+
+## 3. GitHub user names
+
+| Member         | GitHub user    |
+|----------------|----------------|
+| Hari Valentino | valentino-hari |
+| Le Thu Thao    | lthaohp        |
+| Naima Kaloun   | NaimaKaloun    |
+| Manshi Negi    | mansinegi21    |
+
+## 4. Description of the selected data
+
+**Source.** Gregoris AS, McAfee A, Higo H, Common J, Vinson B, Chapman A, Ibrahim A, Pettis JS, Wolf Veiga P, Castillo C, Foster LJ, Pernal SF, Guarna MM (2026). *European foulbrood disease and protein supplementation in honey bee (Apis mellifera L.) colonies pollinating highbush blueberries in British Columbia.* PeerJ 14:e21338. DOI: [10.7717/peerj.21338](https://doi.org/10.7717/peerj.21338)
+
+- Article: <https://peerj.com/articles/21338/> (also in PubMed Central: <https://pmc.ncbi.nlm.nih.gov/articles/PMC13242188/>)
+- Raw data (Supplemental Information 1, Excel file; `Supplementary_Data_1.xlsx`): <https://pmc.ncbi.nlm.nih.gov/articles/instance/13242188/bin/peerj-14-21338-s001.xlsx> (DOI 10.7717/peerj.21338/supp-1)
+- Authors' R code (Supplemental Information 2, .Rmd), which we can use to check our own results: DOI 10.7717/peerj.21338/supp-2
+
+**Study design.** In spring 2018, more than 200 honey bee colonies belonging to five beekeepers were followed in the Fraser Valley (British Columbia). The colonies form six groups (yards): AB-1 had one blueberry (BB) yard and one non-blueberry yard, and the other four beekeepers (AB-2, BC-1, BC-2, BC-3) each had one blueberry yard. Colonies were assessed at three time points: the start of blueberry pollination (TP1), the end of pollination (TP2) and three weeks after (TP3). About half of the colonies in each yard were randomly assigned to receive MegaBee protein patties. The unit of observation is the colony measured at each time point (repeated measures).
+
+**Structure of the Excel file** (`Supplementary_Data_1.xlsx`, 5 sheets). Colonies are identified by `Colony`, and the six yards by `Site.ID` (nonBB AB-1, BB AB-1, AB-2, BC-1, BC-2, BC-3). In total there are 219 colonies (AB-2 = 30, BB AB-1 = 50, BC-1 = 30, BC-2 = 31, BC-3 = 30, nonBB AB-1 = 48).
+
+| Sheet | Format and size | Content |
+|------------------------|------------------------|------------------------|
+| `EFB data TP1-TP3` | Long: one row per colony and time point (657 rows) | EFB symptoms, EFB score, patty treatment and consumption, ddPCR |
+| `EFB for MB test TP1-TP3` | Wide: one row per colony (219 rows) | EFB symptoms at TP1, TP2, TP3 side by side (used for the McNemar-Bowker tests) |
+| `Population data TP1-TP2` | Long (430 rows) | Adult bee population, brood area and EFB at TP1 and TP2 |
+| `PP data TP3` | One row per colony that received patties (92 rows) | Total patty consumed, EFB presence and intensity at TP3 |
+| `Varroa data` | Long (345 rows) | *Varroa* counts and infestation at TP1 and TP2 |
+
+**Main variables**
+
+| Variable (column name) | Description | Type | Time points |
+|------------------|------------------|------------------|------------------|
+| `Site.ID`, `Site`, `Forage` | Yard (6 groups), town, and forage type (BB = blueberry, nonBB) | Categorical | \- |
+| `Colony` | Colony identifier | Categorical | \- |
+| `Time.point` | TP1, TP2, TP3 | Categorical (ordered) | \- |
+| `PP` | Received MegaBee protein patties (Y/N) | Categorical (binary) | \- |
+| `EFB.incidence` | EFB symptoms observed in the field (0 = no, 1 = yes) | Categorical (binary) | TP1, TP2, TP3 |
+| `EFB.score` (also `EFB.score.TP3`, `EFB.intensity`) | EFB severity, average frame score (0 to 3); contains many zeros because asymptomatic colonies are included | Numerical (bounded) | TP3 only |
+| `EFB.frames.TP3` | Percentage of frames with EFB symptoms | Numerical | TP3 only |
+| `Consumption.PA1`, `Consumption.Total`, `Total.PP.consumed` | Percentage of patty consumed (first application and total) | Numerical | Patty colonies only |
+| `Adult`, `Brood` | Adult bee population and brood area (frames) | Numerical | TP1, TP2 |
+| `Total.bees`, `Varroa.count`, `Mite.percent` | Bees sampled, mites counted and infestation percentage | Numerical | TP1, TP2 |
+| `EFB.copy.no.ddPCR`, `Actin.copy.no.ddPCR`, `EFB.ratio.ddPCR` | *M. plutonius* and bee actin copy numbers, and their ratio (relative *M. plutonius* load) in adult bees | Numerical (zero-heavy) | TP1, TP2, TP3 |
+
+## 5. Objectives, research questions and hypotheses
+
+**Objective.** Investigate the effect of European foulbrood disease (EFB) and protein supplementation on honey bee colonies pollinating highbush blueberries in British Columbia, by re-analysing the published data, checking the reliability of the original conclusions and adding complementary analyses.
+
+**Research questions**
+
+1.  Does the prevalence of EFB increase between the start of pollination and three weeks after it, and is the change the same in all yards?
+2.  Does protein supplementation (MegaBee patties) reduce the prevalence or the severity of EFB?
+3.  Are field observations of EFB associated with the presence and the amount of *Melissococcus plutonius* measured by ddPCR?
+4.  Are the conclusions reliable when the model assumptions are checked, and do other variables (e.g. *Varroa*, colony strength) change the picture?
+
+**Main hypotheses**
+
+- **H1.** EFB prevalence increases from TP1 to TP3 (the paper also compares a non-blueberry yard, so we can see whether the increase is specific to blueberry yards or is seasonal).
+- **H2.** Colonies that received MegaBee patties have a lower EFB prevalence (H2a) and a lower EFB severity (H2b) than control colonies.
+- **H3.** Colonies with EFB symptoms are more likely to be ddPCR-positive for *M. plutonius* (H3a), and, among positive colonies, a higher severity is associated with a higher bacterial load (H3b).
+- **H4.** EFB prevalence and severity differ among yards.
+
+## 6. Analyses
+
+**A. Analyses of the article that we will repeat**
+
+| Purpose | Variables | Analysis |
+|------------------------|------------------------|------------------------|
+| EFB prevalence over time, each yard separately (H1) | EFB symptoms (yes/no) at TP1, TP2, TP3 | McNemar-Bowker tests for each pair of time points with Bonferroni correction (α = 0.05/3 = 0.017), as in the paper. As a check: mixed-effects logistic regression with colony as random effect |
+| Do field symptoms reflect infection? (H3a) | EFB symptoms; ddPCR detection (yes/no); time point | Mixed-effects logistic regression, colony nested in yard as random effect |
+| Compare EFB prevalence among yards at TP3 (H4) | EFB symptoms, yard | Fisher's exact test, with pairwise comparisons and Bonferroni correction |
+| Effect of patties on prevalence (H2a) | Patty treatment, EFB symptoms at TP3 | Fisher's exact test for each yard |
+| Effect of patties on severity (H2b) | Patty treatment, EFB severity (symptomatic colonies) | Student's t-test for each yard (only with enough colonies per group), with Mann-Whitney as a check |
+| Colony strength over time | Adult population, brood area at TP1 and TP2 | Linear mixed model with time point as fixed effect and colony as random effect |
+
+**B. Additional analyses**
+
+| Question | Analysis | Why |
+|------------------------|------------------------|------------------------|
+| Does a higher *M. plutonius* load go with a more severe EFB? (H3b) | Linear regression / mixed model of log10(ddPCR ratio) on EFB severity, only ddPCR-positive colonies at TP3 | Shows the strength of the relation, not only the presence |
+| Do symptomatic colonies carry more bacteria? (H3) | t-test on log10(ddPCR ratio), with Mann-Whitney as non-parametric option | Simple comparison of symptomatic and asymptomatic colonies |
+| Which yards differ in EFB severity? (H4) | ANOVA (linear model) followed by Tukey's HSD (`TukeyHSD()` and `agricolae::HSD.test()`), with Kruskal-Wallis as an alternative | ANOVA only says that yards differ; Tukey says which ones, correcting for multiple comparisons |
+| Does patty consumption change EFB? (H2) | Binomial GLM for EFB presence and linear model for severity, with consumption interacting with yard | More informative than comparing treatment groups, because it uses the amount consumed |
+| Is brood area explained by *Varroa* more than by EFB? | Linear mixed model: brood area \~ time point + EFB + *Varroa* + (1 \| colony) | Checks a possible confounding factor |
+
+**C. Reliability of the conclusions**
+
+- Check the assumptions of every model: residual normality (`shapiro.test()`, Q-Q plots), equal variances (Bartlett test, residuals vs fitted) and, if needed, transformations (log, square root) or non-parametric tests, as in the InsectSprays exercise.
+- Check overdispersion and residual patterns with the DHARMa package. For the count variables (*Varroa* mite counts, with the number of bees sampled as exposure, and the ddPCR copy numbers) we will fit Poisson models, test for overdispersion and, if needed, use quasi-Poisson or negative binomial models. For the binary EFB variable (0/1) we will use binomial models and check their residuals with DHARMa, because overdispersion cannot be tested on single 0/1 observations.
+- **Mediation analysis (exploratory).** We would like to try the `mediation` package (`mediate()`) to test whether supplementation affects EFB through colony nutrition or strength. Patty consumption cannot be the mediator because control colonies did not receive patties, so we will test adult population or brood area at TP2 as possible mediators of the effect of patty treatment on EFB at TP3. We will first check whether patty treatment affects the mediator; if it does not, the mediation analysis will not be meaningful and we will report that.
