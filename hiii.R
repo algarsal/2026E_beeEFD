@@ -22,5 +22,11 @@ PP = factor(PP)                                        # patty: Y / N
 str(efb_clean) 
 dir.create("data/clean", recursive = TRUE, showWarnings = FALSE)
 saveRDS(efb_clean, "data/clean/efb.rds")
-
+varroa <- read_excel(path, sheet = "Varroa data")
+varroa <- varroa[!is.na(varroa$Colony), ] #to remove empty rows
+library(ggplot2)
+ggplot(varroa, aes(x= Mite.percent)) + 
+geom_histogram(bins = 30)+
+facet_wrap(~Time.point) +
+labs( x = "mites per 100 bees", y = "number of colonies")
 
